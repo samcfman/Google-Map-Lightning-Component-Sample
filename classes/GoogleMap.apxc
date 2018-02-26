@@ -1,0 +1,71 @@
+public with sharing class GoogleMap {
+	@AuraEnabled
+
+    public static string getMapObject(string objectType, string nameField, string geoLocField, string key){
+        
+        sObject obj;
+        String mapObj='';
+        //List<sObject> objList = new List<sObject>();
+
+        string strQuery; 
+        string latFieldName = geoLocField + '__latitude__s';
+        string lngFieldName = geoLocField + '__longitude__s';
+        strQuery = 'select id,' +  nameField + ',' + latFieldName + ','+  lngFieldName + ' from ' + objectType 
+            + ' where ' + nameField  + ' = ' + '\'' + key + '\'' + ' LIMIT 1';  
+        try {        	   
+            sObject[] objList = Database.query(strQuery);  
+            
+            if (objList.size() > 0) { 
+            obj = objList[0];
+            mapObj =  '{' + ' "id":' + '"' + String.valueOf(obj.get('id')) + '"' + ',' 
+                + ' "name":'+ '"' + String.valueOf(obj.get(nameField)) + '"' + ','
+                + ' "lat":' + String.valueof(obj.get(latFieldName)) + ','
+                + ' "lng":' + String.valueof(obj.get(lngFieldName)) +  '}';
+    
+            } else {
+                mapObj = '';
+            }
+        } catch (Exception e) {
+            mapobj = '';
+        }
+        return mapObj;
+    }    
+
+    @AuraEnabled
+    public static sObject updateGeoLocation(string objectType, string nameField, string geoLocField, string id, string lat, string lng){
+        string latFieldName = geoLocField + '__latitude__s';
+        string lngFieldName = geoLocField + '__longitude__s';
+       
+        sObject sObj = Schema.getGlobalDescribe().get(objectType).newSObject() ;
+        sObj.put('id' , id) ;
+        sObj.put(latFieldName, lat);
+        sObj.put(lngFieldName, lng);
+        
+        upsert sObj;
+           
+        return sObj;
+
+    }
+            
+    public static List<sObject> getObjects(){
+        
+        sObject obj;
+        String mapObj;
+        List<sObject> objList = new List<sObject>();
+        Account a;
+   
+        sObject sObj = Schema.getGlobalDescribe().get('Account').newSObject() ;
+        
+        obj = [select id, name, Location__latitude__s, Location__longitude__s from Account where name = 'GenePoint' LIMIT 1];
+	//	mapObj = String.valueOf(obj.get('Name')) ;
+       
+        //   obj.getAll()
+        //a = obj;
+     //   mapObj = '{' + ' "name":' + obj.Name + ' "latitude":' + obj.Location__Latitude__s + ' "longitude":'+ obj.Location__Longitude__s + '}';
+   		mapObj =  '{' + ' "id":' + String.valueOf(obj.get('id')) + ' "name":' + String.valueOf(obj.get('Name')) + '}';
+        objList.add(obj) ;
+        //  obj = objs[0];
+        return objList;
+    }    
+    
+}

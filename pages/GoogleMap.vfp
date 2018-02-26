@@ -1,0 +1,185 @@
+<apex:page showHeader="false">
+    <html>
+       
+        <head>
+            <!-- 
+				This stylesheet contains specific styles for displaying the map on this page. Replace it with your own styles as described in the documentation:
+				https://developers.google.com/maps/documentation/javascript/tutorial 
+			-->
+            <link rel="stylesheet" href="//developers.google.com/maps/documentation/javascript/demos/demos.css"/>
+        </head>
+        <body>           
+            <div id="map"></div>
+            <script>
+            var lexOrigin = 'https://{!$CurrentPage.parameters.lcHost}';
+			var markers = [];
+            var updateControl;
+            var centerControlDiv;
+            //Data for Google map
+            var data;
+            
+            //Send message to LC
+            function sendToLC(message) {
+                if(typeof(lexOrigin) != 'undefined'){
+     				var o = JSON.stringify(message);               
+	                parent.postMessage(o, lexOrigin);
+                }
+            }
+            
+            //Receive message from LC
+            window.addEventListener("message", function(event) {
+                //If page is public (like used in force.com sites) then be careful about the origin
+                //if (event.origin !== lexOrigin) {
+                    // Not the expected origin: reject message!
+                    //return;
+                //}
+                // Handle message
+ 
+                //data = event.data;
+                data = JSON.parse(event.data);
+    
+             
+                if(typeof(data.loadGoogleMap) != 'undefined'){
+                    //Load Google Map Script
+                    var script = document.createElement("script");
+                    script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyBVZjjsxwvEZ4zuiEJY1_l3nKaleWtz9tI&callback=initMap";
+                    document.getElementsByTagName("head")[0].appendChild(script);        
+                }
+            }, false);
+            
+            //Callback when Google Map is loaded
+            function initMap() {
+                //Add marker for each point along with text
+
+        		function placeMarker(location) {
+                    // clear existing mark;
+                    
+                    var mapData = data.mapData;
+                    
+                    //No marker shown - no record loaded
+                    if (mapData.length == 0) {
+                        return;
+                    }    
+                        
+ 					var txt;
+                    for (var i = 0; i < markers.length; i++) {
+                       txt= mapData[i].markerText;
+         			   markers[i].setMap(null);
+        		    }
+                    markers = [];
+                    
+            		var marker = new google.maps.Marker({
+                		position: location,
+                        animation: google.maps.Animation.DROP,
+                		map: map              		
+            		});
+                    
+					markers.push(marker);
+                    var infoWindow = new google.maps.InfoWindow({
+                        content: txt
+                    });
+            
+                    infoWindow.open(map, marker);
+                    // Show the update control visible
+                    if (map.controls[google.maps.ControlPosition.TOP_CENTER].length == 0) {
+						map.controls[google.maps.ControlPosition.TOP_CENTER].push(centerControlDiv);
+                    }
+                    sendToLC({'state':'CHANGED', 'vfHost': vfHost, 'lat':location.lat(), 'lng':location.lng()});
+        		}                
+                
+                function addMarker(feature) {
+                    var marker = new google.maps.Marker({
+                        position: feature.position,
+                        draggable: true,
+                        //icon: icons[feature.type].icon,
+                        map: map
+                    });
+                    markers.push(marker);
+                    var infoWindow = new google.maps.InfoWindow({
+                        content: feature.markerText
+                    });
+                    infoWindow.open(map, marker);
+                }
+ 
+                function CenterControl(controlDiv, map, allowUpdate) {
+
+                    // Set CSS for the control border.
+                    var controlUI = document.createElement('div');
+                    controlUI.style.backgroundColor = '#fff';
+                    controlUI.style.border = '2px solid #fff';
+                    controlUI.style.borderRadius = '3px';
+                    controlUI.style.boxShadow = '0 2px 6px rgba(0,0,0,.3)';
+                    controlUI.style.cursor = 'pointer';
+                    controlUI.style.marginBottom = '22px';
+                    controlUI.style.textAlign = 'center';
+                    if (allowUpdate)
+                    	controlUI.title = 'Click to update the geolocation of the record';
+                    
+                    controlDiv.appendChild(controlUI);
+            
+                    // Set CSS for the control interior.
+                    var controlText = document.createElement('div');
+                    //   
+                       
+                    controlText.style.fontFamily = 'Roboto,Arial,sans-serif';
+                    controlText.style.fontSize = '16px';
+                    controlText.style.lineHeight = '38px';
+                    controlText.style.paddingLeft = '5px';
+                    controlText.style.paddingRight = '5px';
+                    if (allowUpdate) {
+                    	controlText.innerHTML = 'Update Location';
+                        controlText.style.color = 'rgb(25,25,25)';
+                    }
+                    else { 
+                     	controlText.innerHTML = 'Record Not Found'; 
+                        controlText.style.color = 'rgb(255,0,0)';
+                    }    
+                    controlUI.appendChild(controlText);
+            		
+                    // Setup the click event listeners: send message to Lightning Component.
+                    if (allowUpdate) {
+                        controlUI.addEventListener('click', function() {
+                            sendToLC({'state':'UPDATE', 'vfHost': vfHost});
+                        });
+        			}
+	           }
+
+                //Create new map
+
+                var map = new google.maps.Map(document.getElementById("map"), JSON.parse(data.mapOptions));
+        		
+                google.maps.event.addListener(map, 'click', function(event) {
+                    placeMarker(event.latLng);                 
+        		});              
+                
+                //Set map center
+                map.setCenter(data.mapOptionsCenter);
+                
+                //iterate through map data for each point (even if 1)
+                var mapData = data.mapData;
+                for(var i=0, j=mapData.length; i<j; i++){
+                    //Add marker for each point
+                    var myLatlng = new google.maps.LatLng(mapData[i].lat, mapData[i].lng);
+                    addMarker({position: myLatlng, markerText: mapData[i].markerText  });
+                }
+                
+                // Add the SAVE control
+                centerControlDiv = document.createElement('div');
+                centerControlDiv.index = 1;
+                var allowUpdate = mapData.length >0;
+                updateControl = new CenterControl(centerControlDiv, map, allowUpdate);
+                if (allowUpdate == false)
+                    map.controls[google.maps.ControlPosition.TOP_CENTER].push(centerControlDiv);
+
+            }
+
+            
+            //Let LC know that VF page been loaded along with it's URL
+            //LC will then send the data
+            //This is done because LC has no way to know that VF page in iFrame has been loaded, event listener set and ready for data
+            var vfHost = "{!LEFT($CurrentPage.URL,FIND('/',$CurrentPage.URL,9))}";
+            sendToLC({'state':'LOADED', 'vfHost': vfHost});
+            </script>      
+    </body>      
+    </html>
+</apex:page>
